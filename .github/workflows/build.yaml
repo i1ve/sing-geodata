@@ -1,0 +1,57 @@
+name: Generate geodata for sing-box
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 23 * * *"
+  push:
+    paths-ignore:
+      - ".github/**"
+      - "LICENSE"
+      - "README.md"
+
+concurrency: 
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TZ: Asia/Hong_Kong
+
+jobs:
+  build:
+    name: Generate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Workflow runs delete
+        uses: InfraWay/delete-workflow-runs@v2.1.2
+        with:
+          token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          retain_days: 7
+          keep_minimum_runs: 3
+      - name: Checkout Repo
+        uses: actions/checkout@v3
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version-file: ./go.mod
+      - name: Build Geo files
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NO_SKIP: true
+        run: |
+          go run -v .
+      - name: Move files to publish directory
+        run: |
+          mkdir -p public
+          mv ./*.db ./public/
+      - name: Git push assets to "release" branch
+        run: |
+          cd public || exit 1
+          git init --initial-branch=release
+          git config --local user.name "${{ github.actor }}"
+          git config --local user.email "${{ github.actor }}@users.noreply.github.com"
+          git add -A
+          git commit -m "Last Updated $(date '+%Y-%m-%d %H:%M:%S')"
+          git remote add geodata "https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}"
+          git push -f -u geodata release
